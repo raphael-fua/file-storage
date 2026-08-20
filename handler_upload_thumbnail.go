@@ -1,14 +1,15 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
-	// "google.golang.org/grpc/balancer/base"
 )
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +46,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	mediaTypeString := header.Header.Get("Content-Type")
-
+	words := strings.Split(mediaTypeString, "/")
+	fileExtensionString := words[len(words) - 1]
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -58,29 +60,41 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// `file` is an `io.Reader` that we can read from to get the image data
-	imageAsByteSlice, err := io.ReadAll(file)
+	// imageAsByteSlice, err := io.ReadAll(file)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusBadRequest, "could not read thumbnail", err)
+	// 	return
+	// }
+
+	filePath := filepath.Join(cfg.assetsRoot, videoIDString + "." + fileExtensionString)
+    // fmt.Sprintf("assets/%s.%s", videoIDString, fileExtensionString)
+	osFile, err := os.Create(filePath)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "could not read thumbnail", err)
+		respondWithError(w, http.StatusBadRequest, "could not create file", err)
 		return
 	}
-	imageSQLFormat := base64.StdEncoding.EncodeToString(imageAsByteSlice)
-	dataURL := fmt.Sprintf("data:%s;base64,%s", mediaTypeString, imageSQLFormat)
+	_, err = io.Copy(osFile, file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not copy to new file", err)
+		return
+	}
 
+	thumbnailURLString := fmt.Sprintf(
+		"http://localhost:%s/assets/%s.%s",
+		cfg.port,
+		videoIDString,
+		fileExtensionString,
+	)
 
-	// URLString := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID)
-	// video.ThumbnailURL = &URLString
-	video.ThumbnailURL = &dataURL
+	// imageSQLFormat := base64.StdEncoding.EncodeToString(imageAsByteSlice)
+	// dataURL := fmt.Sprintf("data:%s;base64,%s", mediaTypeString, imageSQLFormat)
+
+	video.ThumbnailURL = &thumbnailURLString
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "could not update video", err)
 		return
 	}
-
-	// thbnail := thumbnail{
-	// 	data: imageAsByteSlice,
-	// 	mediaType: mediaTypeString,
-	// }
-	// videoThumbnails[videoID] = thbnail
 
 	respondWithJSON(w, http.StatusOK, video)
 }
