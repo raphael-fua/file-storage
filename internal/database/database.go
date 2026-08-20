@@ -87,3 +87,4 @@ func (c Client) Reset() error {
 	}
 	return nil
 }
+
