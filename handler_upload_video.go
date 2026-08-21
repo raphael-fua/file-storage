@@ -125,8 +125,24 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "could not read byte slice", err)
 		return
 	}
-	key := hex.EncodeToString(byteSliceForKey) + 
-		   "." + ExtractFileExtension(mimeTypeString)
+	aspectRatio, err := getVideoAspectRatio(osTempFile.Name())
+	if err != nil {
+		respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"could not get video's aspect ratio",
+			err,
+		)
+		return
+	}
+	key := hex.EncodeToString(byteSliceForKey) + "." + ExtractFileExtension(mimeTypeString)
+	if aspectRatio == "9:16" {
+		key = "portrait" + "/" + key
+	} else if aspectRatio == "16:9" {
+		key = "landscape" + "/" + key
+	}
+
+
 
    _, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
