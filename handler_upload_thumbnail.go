@@ -1,12 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -46,8 +47,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	mediaTypeString := header.Header.Get("Content-Type")
-	words := strings.Split(mediaTypeString, "/")
-	fileExtensionString := words[len(words) - 1]
+	fileExtensionString := ExtractFileExtension(mediaTypeString)
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -59,20 +59,31 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// `file` is an `io.Reader` that we can read from to get the image data
-	// imageAsByteSlice, err := io.ReadAll(file)
-	// if err != nil {
-	// 	respondWithError(w, http.StatusBadRequest, "could not read thumbnail", err)
-	// 	return
-	// }
+	byteSliceForFilePath := make([]byte, 32)
+	_, err = rand.Read(byteSliceForFilePath)
+	if err != nil {
+		respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"could not read byte slice",
+			err,
+		)
+		return
+	}
 
-	filePath := filepath.Join(cfg.assetsRoot, videoIDString + "." + fileExtensionString)
-    // fmt.Sprintf("assets/%s.%s", videoIDString, fileExtensionString)
-	osFile, err := os.Create(filePath)
+	filePathStringRelativeToAssets :=
+		base64.RawURLEncoding.EncodeToString(byteSliceForFilePath) +
+		"." +
+		fileExtensionString
+
+	filePathString := filepath.Join(cfg.assetsRoot, filePathStringRelativeToAssets)
+
+	osFile, err := os.Create(filePathString)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "could not create file", err)
 		return
 	}
+	
 	_, err = io.Copy(osFile, file)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "could not copy to new file", err)
@@ -80,14 +91,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	thumbnailURLString := fmt.Sprintf(
-		"http://localhost:%s/assets/%s.%s",
+		"http://localhost:%s/assets/%s",
 		cfg.port,
-		videoIDString,
-		fileExtensionString,
+		filePathStringRelativeToAssets,
 	)
-
-	// imageSQLFormat := base64.StdEncoding.EncodeToString(imageAsByteSlice)
-	// dataURL := fmt.Sprintf("data:%s;base64,%s", mediaTypeString, imageSQLFormat)
 
 	video.ThumbnailURL = &thumbnailURLString
 	err = cfg.db.UpdateVideo(video)
