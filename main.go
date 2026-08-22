@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
+
 	// "github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-
 )
 
 type apiConfig struct {
@@ -106,7 +107,10 @@ func main() {
 		s3Region:         s3Region,
 		s3CfDistribution: s3CfDistribution,
 		port:             port,
-		s3Client:         s3.NewFromConfig(awsCfg),
+		// s3Client:         s3.NewFromConfig(awsCfg),
+		s3Client:         s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+			o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+		}),
 	}
 
 	err = cfg.ensureAssetsDir()

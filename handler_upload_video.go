@@ -23,6 +23,10 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	r.Body = http.MaxBytesReader(w, r.Body, uploadLimitInt)
 
 	videoID, err := uuid.Parse(r.PathValue("videoID"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "could not parse video id", err)
+		return
+	}
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -50,7 +54,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 			w,
 			http.StatusUnauthorized,
 			"video user id does not match user id",
-			err,
+			nil,
 		)
 		return
 	}
@@ -165,6 +169,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		)
 		return
 	}
+	// defer os.Remove(osProcessedFile.Name())
 	defer osProcessedFile.Close()
 
 
@@ -185,12 +190,15 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoURL := fmt.Sprintf(
-		"https://%s.s3.%s.amazonaws.com/%s",
-		cfg.s3Bucket,
-		cfg.s3Region,
-		key,
-	)
+	// eg: tube-private-2357,portrait/vertical.mp4
+	videoURL := fmt.Sprintf("%s,%s", cfg.s3Bucket, key)
+
+	// videoURL := fmt.Sprintf(
+	// 	"https://%s.s3.%s.amazonaws.com/%s",
+	// 	cfg.s3Bucket,
+	// 	cfg.s3Region,
+	// 	key,
+	// )
 	err = cfg.db.UpdateVideo(database.Video{
 		ID: videoMeta.ID,
 		CreatedAt: videoMeta.CreatedAt,
@@ -199,5 +207,22 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		VideoURL: &videoURL,
 		CreateVideoParams: videoMeta.CreateVideoParams,
 	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not update video", err)
+		return
+	}
 
+	video, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "could not get video meta data from database", err)
+		return
+	}
+
+	video, err = cfg.dbVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not presign video", err)
+		return
+	}
+	
+	respondWithJSON(w, http.StatusOK, video)
 }
