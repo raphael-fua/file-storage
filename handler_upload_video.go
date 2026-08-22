@@ -135,6 +135,8 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		)
 		return
 	}
+
+
 	key := hex.EncodeToString(byteSliceForKey) + "." + ExtractFileExtension(mimeTypeString)
 	if aspectRatio == "9:16" {
 		key = "portrait" + "/" + key
@@ -142,12 +144,35 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		key = "landscape" + "/" + key
 	}
 
+	processedFilePathString, err := processVideoForFastStart(osTempFile.Name())
+	if err != nil {
+		respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"could not process video for fast start",
+			err,
+		)
+		return
+	}
+
+	osProcessedFile, err := os.Open(processedFilePathString)
+	if err != nil {
+		respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"could not create processed os file",
+			err,
+		)
+		return
+	}
+	defer osProcessedFile.Close()
+
 
 
    _, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
 		Key: &key,    
-		Body: osTempFile,
+		Body: osProcessedFile,
 		ContentType: &mimeTypeString,
 	})
 	if err != nil {
@@ -176,28 +201,3 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	})
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -19,8 +19,7 @@ type WidthAndHeight struct {
 }
 
 func getVideoAspectRatio(filePath string) (string, error) {
-	cmd := exec.Command(
-		"ffprobe",
+	cmd := exec.Command("ffprobe",
 		"-v",
 		"error",
 		"-print_format",
@@ -52,3 +51,8 @@ func getVideoAspectRatio(filePath string) (string, error) {
 	}
 	return "16:9", nil
 }
+
+
+
+
+
